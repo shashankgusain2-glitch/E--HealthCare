@@ -1,0 +1,242 @@
+generator client {
+  provider = "prisma-client-js"
+  // output   = "../lib/generated/prisma"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+
+enum Role {
+PATIENT
+HOSPITAL_ADMIN
+HOSPITAL_STAFF
+DOCTOR
+SUPER_ADMIN  
+}
+
+enum AppointmentStatus {
+  PENDING      
+  CONFIRMED   
+  CANCELED    
+  COMPLETED    
+}
+
+enum AppointmentType {
+IN_PERSON
+VIDEO_CALL
+}
+
+enum HospitalStatus {
+PENDING_REVIEW
+APPROVED
+REJECTED
+}
+enum AmbulanceStatus {
+  PENDING_REVIEW
+  APPROVED
+  REJECTED
+}
+
+
+model User {
+id                String    @id @default(cuid())
+email             String    @unique
+password          String    
+name              String?
+phone             String?
+role              Role      @default(PATIENT)
+isEmailVerified   Boolean   @default(false)
+createdAt         DateTime  @default(now())
+updatedAt         DateTime  @updatedAt
+
+hospitalId        String?
+hospital          Hospital? @relation("AdminOfHospital", fields: [hospitalId], references: [id])
+doctorId          String?
+doctor            Doctor?   @relation("UserDoctor")
+
+otp               OTP?
+appointments      Appointment[] @relation("PatientAppointments")
+prescriptions     Prescription[] @relation("PatientPrescriptions")
+}
+
+model OTP {
+id        String   @id @default(cuid())
+code      String
+expiresAt DateTime
+createdAt DateTime  @default(now())
+userId    String   @unique
+user      User     @relation(fields: [userId], references: [id])
+}
+
+
+model Hospital {
+id        String @id @default(cuid())
+name      String
+address   String
+city      String
+phone     String?
+status    HospitalStatus @default(PENDING_REVIEW)
+applicantEmail String?
+registrationNumber String @default("N/A")
+stateMedicalCouncil String @default("N/A")
+establishedYear Int @default(1900)
+emergencyServices Boolean @default(false)
+documentUrl String @default("N/A")
+latitude    Float?
+longitude   Float?
+isGovernment Boolean @default(true)
+createdAt DateTime @default(now())
+updatedAt DateTime @updatedAt
+
+admins     User[]     @relation("AdminOfHospital")
+doctors    Doctor[]   @relation("HospitalDoctors")
+timeSlots  TimeSlot[] @relation("HospitalTimeSlots")
+appointments Appointment[] @relation("HospitalAppointments")
+ambulances Ambulance[]
+services   Service[]  @relation("HospitalServices") 
+}
+
+model Doctor {
+id        String @id @default(cuid())
+name      String
+specialty String 
+hospitalId String
+createdAt DateTime @default(now())
+updatedAt DateTime @updatedAt
+
+userId    String? @unique
+user      User? @relation("UserDoctor", fields: [userId], references: [id]) 
+hospital  Hospital @relation("HospitalDoctors", fields: [hospitalId], references: [id])
+
+appointments Appointment[] @relation("DoctorAppointments")
+timeSlots TimeSlot[] @relation("DoctorTimeSlots")
+prescriptions Prescription[] @relation("DoctorPrescriptions")
+}
+
+model Service {
+id          String   @id @default(cuid())
+name        String   
+price       Int     
+hospitalId  String 
+appointments Appointment[]
+hospital     Hospital @relation("HospitalServices", fields: [hospitalId], references: [id]) // <-- ADDED THIS RELATION
+
+@@unique([name, hospitalId])
+}
+
+model Appointment {
+id          String @id @default(cuid())
+
+patientId   String
+doctorId    String?
+hospitalId  String
+serviceId   String // Link to the specific service/procedure
+
+type        AppointmentType
+status      AppointmentStatus @default(PENDING)
+startTime   DateTime
+endTime     DateTime
+notes       String?
+paymentStatus String @default("PENDING")
+videoLink   String? // Populated if type is VIDEO_CALL and confirmed
+
+actualStartTime   DateTime?
+actualEndTime     DateTime?
+
+razorpayOrderId   String? @unique // Razorpay Order ID
+razorpayPaymentId String? // Razorpay Payment ID
+razorpaySignature String? // Razorpay Signature
+
+createdAt DateTime @default(now())
+updatedAt DateTime @updatedAt
+
+prescription Prescription?
+
+patient    User     @relation("PatientAppointments", fields: [patientId], references: [id])
+doctor     Doctor?  @relation("DoctorAppointments", fields: [doctorId], references: [id])
+hospital   Hospital @relation("HospitalAppointments", fields: [hospitalId], references: [id])
+service    Service  @relation(fields: [serviceId], references: [id])
+}
+
+model Prescription {
+id            String   @id @default(cuid())
+appointmentId String   @unique
+patientId     String
+doctorId      String
+medications   Json     // Storing array of medications
+notes         String?
+createdAt     DateTime @default(now())
+updatedAt     DateTime @updatedAt
+
+appointment   Appointment @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+patient       User        @relation("PatientPrescriptions", fields: [patientId], references: [id])
+doctor        Doctor      @relation("DoctorPrescriptions", fields: [doctorId], references: [id])
+}
+
+model TimeSlot {
+id        String @id @default(cuid())
+hospitalId String
+doctorId  String? // Optional: if the slot is for a specific doctor
+startTime DateTime
+endTime   DateTime
+isBooked  Boolean @default(false)
+
+hospital Hospital @relation("HospitalTimeSlots", fields: [hospitalId], references: [id])
+doctor   Doctor? @relation("DoctorTimeSlots", fields: [doctorId], references: [id])
+
+createdAt DateTime @default(now())
+updatedAt DateTime @updatedAt
+}
+
+model Ambulance {
+id        String @id @default(cuid())
+driverName String
+licensePlate String @unique
+region    String // Area of operation
+isAvailable Boolean @default(true)
+contactNumber String  
+status        AmbulanceStatus @default(PENDING_REVIEW) 
+hospitalId String? // Associated with a hospital, but could be independent
+createdAt DateTime @default(now())
+updatedAt DateTime @updatedAt
+
+hospital Hospital? @relation(fields: [hospitalId], references: [id])
+}
+
+model ChatSession {
+  id        String        @id @default(dbgenerated("(gen_random_uuid())::text"))
+  userEmail String
+  userName  String?
+  language  String?       @default("en")
+  startedAt DateTime?     @default(now()) @db.Timestamp(6)
+  messages  ChatMessage[]
+  report    ChatReport?
+}
+
+model ChatMessage {
+  id        String      @id @default(dbgenerated("(gen_random_uuid())::text"))
+  sessionId String
+  sender    String
+  message   String
+  createdAt DateTime?   @default(now()) @db.Timestamp(6)
+  session   ChatSession @relation(fields: [sessionId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+}
+
+model ChatReport {
+  id               String      @id @default(dbgenerated("(gen_random_uuid())::text"))
+  sessionId        String      @unique
+  userEmail        String
+  userName         String?
+  symptoms         String[]
+  possibleDiseases String[]
+  aiAssessment     String?
+  language         String?
+  isEmergency      Boolean?    @default(false)
+  createdAt        DateTime?   @default(now()) @db.Timestamp(6)
+  session          ChatSession @relation(fields: [sessionId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+}
+

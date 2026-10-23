@@ -1,0 +1,38 @@
+{
+  "name": "healthcare-plus-backend",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "build": "next build",
+    "dev": "next dev -p 4000",
+    "lint": "next lint",
+    "start": "next start -p 4000",
+    "postinstall": "prisma generate",
+    "db:migrate": "prisma migrate dev",
+    "db:deploy": "prisma migrate deploy",
+    "db:seed": "node prisma/seed-real.js",
+    "db:seed:demo": "node prisma/seed-demo-users.js",
+    "db:studio": "prisma studio"
+  },
+  "dependencies": {
+    "@google/generative-ai": "^0.24.1",
+    "@prisma/client": "6.17.1",
+    "bcrypt": "^5.1.1",
+    "next": "14.2.3",
+    "next-auth": "^4.24.7",
+    "nodemailer": "^6.9.22",
+    "razorpay": "^2.9.6",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@types/bcrypt": "^6.0.0",
+    "@types/next-auth": "^3.15.0",
+    "@types/node": "22",
+    "@types/nodemailer": "^6.4.15",
+    "@types/react": "^18.3.3",
+    "@types/react-dom": "^18.3.0",
+    "prisma": "6.17.1",
+    "typescript": "^5.4.5"
+  }
+}
