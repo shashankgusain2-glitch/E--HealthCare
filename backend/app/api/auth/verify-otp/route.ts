@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
-import bcrypt  from "bcrypt";
 import { checkOtp } from '@/lib/otp';
+import { hashPassword } from '@/lib/password';
 
 // Signup happens in two calls, and both must carry the emailed OTP:
 //   1. { email, otp, type: "verification" }     -> confirms the code
@@ -28,12 +28,11 @@ export async function POST(request: Request) {
       return NextResponse.json({ message: 'Password is required' }, { status: 400 });
     }
 
-    const hashPassword = await bcrypt.hash(password,5);
     const user = await prisma.user.update({
       where: {
         email: email
       },data: {
-        password: hashPassword,
+        password: await hashPassword(password),
         isEmailVerified: true
       }
     })

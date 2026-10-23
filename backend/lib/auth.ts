@@ -3,7 +3,15 @@ import CredentialsProvider from "next-auth/providers/credentials";
 import GoogleProvider from "next-auth/providers/google";
 import prisma from "./prisma";
 import { sendOtp } from "./otp";
+import { hashPassword, needsRehash } from "./password";
+import { MINUTE, RateLimitError, blockedFor, consume, reset, waitText } from "./rate-limit";
 import bcrypt from "bcrypt";
+
+const MAX_FAILED_LOGINS = 10; // per email; then a 15-minute wait
+const INVALID_LOGIN = "Invalid email or password";
+const SIGN_IN_UNAVAILABLE = "Sign-in is unavailable right now. Please try again later.";
+// Checked against when the email is unknown, so that path takes as long as a wrong password.
+const DUMMY_HASH = bcrypt.hashSync("no-account-placeholder", 10);
 
 export const authOptions = {
   providers: [
@@ -26,21 +34,48 @@ export const authOptions = {
           throw new Error("Username and password required");
         }
 
-        const user = await prisma.user.findUnique({
-          where: { email: credentials.email },
-        });
+        const failKey = `login-fail:${credentials.email.trim().toLowerCase()}`;
+        const wait = blockedFor(failKey, MAX_FAILED_LOGINS);
+        if (wait) throw new Error(`Too many failed sign-in attempts. Please try again in ${waitText(wait)}.`);
 
-        if (!user) throw new Error("User not found");
+        let user;
+        try {
+          user = await prisma.user.findUnique({
+            where: { email: credentials.email },
+          });
+        } catch (error) {
+          console.error("Sign-in failed:", error);
+          throw new Error(SIGN_IN_UNAVAILABLE);
+        }
 
-        const isValid = await bcrypt.compare(credentials.password, user.password);
-        if (!isValid) throw new Error("Invalid password");
+        // One message (and similar timing) for an unknown email and a wrong password,
+        // so the form can't reveal which emails have accounts.
+        const isValid = await bcrypt.compare(credentials.password, user?.password || DUMMY_HASH);
+        if (!user || !isValid) {
+          consume(failKey, MAX_FAILED_LOGINS, 15 * MINUTE);
+          throw new Error(INVALID_LOGIN);
+        }
 
         if (!user.isEmailVerified) {
-          await sendOtp(user.email);
+          try {
+            await sendOtp(user.email);
+          } catch (error) {
+            if (error instanceof RateLimitError) throw new Error(error.message);
+            console.error("Could not send the sign-in OTP:", error);
+            throw new Error(SIGN_IN_UNAVAILABLE);
+          }
 
           throw new Error("OTP sent to your email. Please verify before logging in.");
         }
 
+        if (needsRehash(user.password)) {
+          // Upgrade hashes made with the old, weaker work factor; sign-in still succeeds if this fails.
+          await prisma.user
+            .update({ where: { id: user.id }, data: { password: await hashPassword(credentials.password) } })
+            .catch((error) => console.error("Could not upgrade password hash:", error));
+        }
+
+        reset(failKey);
         return {
           id: user.id,
           username: user.email,

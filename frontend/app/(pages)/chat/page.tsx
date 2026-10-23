@@ -89,6 +89,11 @@ export default function ChatAssistantPage() {
         body: JSON.stringify({ messages, input: userInput, language }),
       });
       const data = await res.json();
+      if (res.status === 429) {
+        // Rate limited: tell the user how long to wait instead of a generic error.
+        setMessages((prev) => [...prev, { sender: "bot", text: `⏳ ${data.message}` }]);
+        return;
+      }
       if (!res.ok) throw new Error(data.message);
       const reply = data.reply;
 

@@ -149,12 +149,9 @@ The project isn't deployed yet. When it is, deploy the two apps separately:
 
 ## Known issues
 
-These existed before the restructure and are still open:
+These existed before the restructure and are still open. [REMAINING_WORK.md](REMAINING_WORK.md) tracks what has been fixed since and how the rest will be fixed.
 
 - **Rotate the ZEGOCLOUD server secret.** The old secret was hard-coded in the frontend and remains in the git history. The code now reads it from the backend's `.env`, but the old value should be replaced in the ZEGOCLOUD console.
-- OTP codes are printed to the backend console (`backend/lib/otp.ts`), even when email sending is configured.
-- There is no rate limiting: OTP attempts, logins and the public chat endpoint can be called without limit, and heavy chat use consumes the Gemini quota.
-- Passwords are hashed with bcrypt cost factor 5; 10 or more is the usual recommendation.
 - `GET /api/hospitals` doesn't read its request, so if the database is reachable during `npm run build`, Next.js 14 may cache the hospital list at build time. Adding `export const dynamic = "force-dynamic"` to that route would prevent it.
 - The profile menu links to `/dashboard`, which doesn't exist.
 - Production builds ignore TypeScript and ESLint errors (see each `next.config.mjs`); `frontend/components/theme-provider.tsx` has one TypeScript error.

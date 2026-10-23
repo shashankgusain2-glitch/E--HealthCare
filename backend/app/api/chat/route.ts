@@ -1,13 +1,27 @@
 import { NextResponse } from "next/server";
 import { GoogleGenerativeAI } from "@google/generative-ai";
+import { MINUTE, clientAddress, consume, waitText } from "@/lib/rate-limit";
 
 const LANGUAGES = ["en", "hi", "garhwali", "kumaoni"];
+// Protects the Gemini quota: per visitor, plus an overall cap because visitor addresses can be faked.
+const PER_VISITOR_LIMIT = 20;
+const OVERALL_LIMIT = 200;
 
 type ChatMessage = { sender: "user" | "bot"; text: string };
 
 // Health chat assistant (public). Runs on the server so the Gemini API key never reaches browsers.
 // Body: { messages: conversation so far, input: the new user message, language: one of LANGUAGES }
 export async function POST(request: Request) {
+  const wait =
+    consume(`chat:${clientAddress(request)}`, PER_VISITOR_LIMIT, 10 * MINUTE).retryAfterSeconds ||
+    consume("chat:all", OVERALL_LIMIT, 10 * MINUTE).retryAfterSeconds;
+  if (wait) {
+    return NextResponse.json(
+      { message: `Too many messages. Please try again in ${waitText(wait)}.` },
+      { status: 429, headers: { "Retry-After": String(wait) } }
+    );
+  }
+
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
     console.error("GEMINI_API_KEY must be set to use the chat assistant");
